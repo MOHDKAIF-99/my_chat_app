@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Simple Chat UI</title>
+</head>
+<body>
+  <h2>My First Chat</h2>
+
+  <!-- Area where messages will appear -->
+  <div id="chat-box" style="border: 1px solid #ccc; height: 200px; width: 300px; padding: 10px; overflow-y: auto;"></div>
+
+  <!-- Input and Send button -->
+  <br>
+  <input type="text" id="message-input" placeholder="Type a message...">
+  <button id="send-btn">Send</button>
+
+  <script>
+    const sendBtn = document.getElementById('send-btn');
+    const messageInput = document.getElementById('message-input');
+    const chatBox = document.getElementById('chat-box');
+
+    // Action when "Send" button is clicked
+    sendBtn.addEventListener('click', () => {
+      const text = messageInput.value;
+      
+      if (text.trim() !== "") {
+        // Show the typed message inside the chat box
+        chatBox.innerHTML += `<p><b>You:</b> ${text}</p>`;
+        messageInput.value = ""; // Clear input field
+      }
+    });
+  </script>
+</body>
+</html>
