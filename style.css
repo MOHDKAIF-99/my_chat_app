@@ -13,6 +13,36 @@ body {
   height: 100vh;
 }
 
+#join-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.join-card {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.join-card h2 { color: #075e54; font-size: 1.4rem; }
+.join-card p { font-size: 0.85rem; color: #666; }
+.join-card input { padding: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; outline: none; }
+.join-card button { background-color: #128c7e; color: white; border: none; padding: 12px; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
+
 #chat-container {
   width: 95%;
   max-width: 950px;
@@ -25,7 +55,6 @@ body {
   overflow: hidden;
 }
 
-/* Header */
 .chat-header {
   background-color: #075e54;
   color: #ffffff;
@@ -35,18 +64,9 @@ body {
   justify-content: space-between;
 }
 
-.chat-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-}
+.chat-header .status { font-size: 0.85rem; color: #25d366; }
+#current-user-tag { font-size: 0.85rem; background-color: rgba(255,255,255,0.15); padding: 4px 10px; border-radius: 12px; }
 
-.chat-header .status {
-  font-size: 0.85rem;
-  color: #25d366;
-  font-weight: 500;
-}
-
-/* Chat Messages Area */
 #messages {
   flex: 1;
   padding: 20px;
@@ -58,91 +78,27 @@ body {
   background-size: 24px 24px;
 }
 
-/* Message Bubbles */
 .message-bubble {
   max-width: 65%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
   font-size: 0.95rem;
   line-height: 1.4;
   word-wrap: break-word;
   box-shadow: 0 1px 2px rgba(0,0,0,0.15);
-}
-
-.message-bubble.sent {
-  align-self: flex-end;
-  background-color: #dcf8c6;
-  border-top-right-radius: 0;
-}
-
-.message-bubble.received {
-  align-self: flex-start;
-  background-color: #ffffff;
-  border-top-left-radius: 0;
-}
-
-.message-bubble img {
-  max-width: 100%;
-  border-radius: 6px;
-  margin-top: 4px;
-}
-
-.message-bubble audio {
-  max-width: 260px;
-  margin-top: 4px;
-}
-
-/* Input Bar */
-#input-container {
-  background-color: #f0f2f5;
-  padding: 12px 18px;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
 }
 
-#message-input {
-  flex: 1;
-  padding: 12px 18px;
-  border: none;
-  border-radius: 24px;
-  outline: none;
-  font-size: 0.95rem;
-  background-color: #ffffff;
-}
+.sender-name { font-size: 0.75rem; font-weight: bold; color: #075e54; margin-bottom: 2px; }
+.message-bubble.sent { align-self: flex-end; background-color: #dcf8c6; border-top-right-radius: 0; }
+.message-bubble.sent .sender-name { color: #128c7e; align-self: flex-end; }
+.message-bubble.received { align-self: flex-start; background-color: #ffffff; border-top-left-radius: 0; }
+.message-bubble img { max-width: 100%; border-radius: 6px; margin-top: 4px; }
+.message-bubble audio { max-width: 260px; margin-top: 4px; }
 
-.action-btn {
-  background: none;
-  border: none;
-  font-size: 1.4rem;
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-
-.action-btn:hover {
-  background-color: #e4e6eb;
-}
-
-#send-btn {
-  background-color: #128c7e;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 20px;
-  font-weight: bold;
-  cursor: pointer;
-  transition: background 0.2s;
-}
-
-#send-btn:hover {
-  background-color: #075e54;
-}
-
-#record-btn.recording {
-  background-color: #ea4335;
-  color: white;
-  border-radius: 50%;
-  padding: 6px;
-}
+#input-container { background-color: #f0f2f5; padding: 12px 18px; display: flex; align-items: center; gap: 10px; }
+#message-input { flex: 1; padding: 12px 18px; border: none; border-radius: 24px; outline: none; font-size: 0.95rem; background-color: #ffffff; }
+.action-btn { background: none; border: none; font-size: 1.4rem; cursor: pointer; padding: 6px; border-radius: 50%; }
+#send-btn { background-color: #128c7e; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+#record-btn.recording { background-color: #ea4335; color: white; }

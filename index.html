@@ -7,10 +7,26 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="chat-container">
+
+  <!-- Join / Encryption Setup Screen -->
+  <div id="join-overlay">
+    <div class="join-card">
+      <h2>🔒 E2EE Chat Setup</h2>
+      <p>Enter your username and a shared secret key to generate your encryption key.</p>
+      <input type="text" id="username-input" placeholder="Your Name (e.g., Kaif)">
+      <input type="password" id="key-input" placeholder="Secret Key (e.g., Room123Key)">
+      <button id="join-btn">Enter Secure Chat</button>
+    </div>
+  </div>
+
+  <!-- Main WhatsApp Chat UI -->
+  <div id="chat-container" style="display: none;">
     <div class="chat-header">
-      <h2>🔒 Secure E2EE Chat</h2>
-      <span class="status">● Online</span>
+      <div>
+        <h2>🔒 Encrypted Room</h2>
+        <span class="status">● Connected</span>
+      </div>
+      <span id="current-user-tag"></span>
     </div>
 
     <div id="messages"></div>
@@ -28,12 +44,10 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-
-    // 1. Web Crypto API Setup (AES-GCM Encryption)
     let cryptoKey = null;
+    let myUsername = "Anonymous";
 
-    async function initKey() {
-      const passphrase = "e2ee-secret-chat-key";
+    async function initKey(passphrase) {
       const enc = new TextEncoder();
       const keyMaterial = await crypto.subtle.importKey(
         "raw", enc.encode(passphrase), { name: "PBKDF2" }, false, ["deriveKey"]
@@ -51,7 +65,6 @@
         ["encrypt", "decrypt"]
       );
     }
-    initKey();
 
     async function encryptData(text) {
       const enc = new TextEncoder();
@@ -61,10 +74,7 @@
         cryptoKey,
         enc.encode(text)
       );
-      return {
-        cipherText: Array.from(new Uint8Array(encrypted)),
-        iv: Array.from(iv)
-      };
+      return { cipherText: Array.from(new Uint8Array(encrypted)), iv: Array.from(iv) };
     }
 
     async function decryptData(encryptedObj) {
@@ -77,7 +87,29 @@
       return dec.decode(decrypted);
     }
 
-    // 2. UI Elements
+    // Modal Setup
+    const joinOverlay = document.getElementById('join-overlay');
+    const chatContainer = document.getElementById('chat-container');
+    const usernameInput = document.getElementById('username-input');
+    const keyInput = document.getElementById('key-input');
+    const joinBtn = document.getElementById('join-btn');
+    const currentUserTag = document.getElementById('current-user-tag');
+
+    joinBtn.addEventListener('click', async () => {
+      const name = usernameInput.value.trim();
+      const pass = keyInput.value.trim();
+      if (!name || !pass) {
+        alert("Please enter both Username and Secret Key!");
+        return;
+      }
+      myUsername = name;
+      await initKey(pass);
+      joinOverlay.style.display = 'none';
+      chatContainer.style.display = 'flex';
+      currentUserTag.innerText = `Logged in as: ${myUsername}`;
+    });
+
+    // Chat Logic
     const messagesDiv = document.getElementById('messages');
     const messageInput = document.getElementById('message-input');
     const sendBtn = document.getElementById('send-btn');
@@ -85,11 +117,10 @@
     const imageInput = document.getElementById('image-input');
     const recordBtn = document.getElementById('record-btn');
 
-    // Send Text Message
     async function sendMessage() {
       const text = messageInput.value.trim();
       if (!text) return;
-      const payload = JSON.stringify({ type: 'text', content: text, senderId: socket.id });
+      const payload = JSON.stringify({ type: 'text', content: text, senderId: socket.id, senderName: myUsername });
       const encrypted = await encryptData(payload);
       socket.emit('sendMessage', encrypted);
       messageInput.value = '';
@@ -100,14 +131,13 @@
       if (e.key === 'Enter') sendMessage();
     });
 
-    // Send Image
     imageBtn.addEventListener('click', () => imageInput.click());
     imageInput.addEventListener('change', () => {
       const file = imageInput.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
-          const payload = JSON.stringify({ type: 'image', content: e.target.result, senderId: socket.id });
+          const payload = JSON.stringify({ type: 'image', content: e.target.result, senderId: socket.id, senderName: myUsername });
           const encrypted = await encryptData(payload);
           socket.emit('sendMessage', encrypted);
         };
@@ -115,37 +145,27 @@
       }
     });
 
-    // 3. Compressed Audio Recording
-    let mediaRecorder;
-    let audioChunks = [];
-    let isRecording = false;
-
+    let mediaRecorder, audioChunks = [], isRecording = false;
     recordBtn.addEventListener('click', async () => {
       if (!isRecording) {
         try {
           const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
           let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = 'audio/ogg;codecs=opus';
-          }
+          if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/ogg;codecs=opus';
 
           mediaRecorder = new MediaRecorder(stream, { mimeType });
           audioChunks = [];
-
-          mediaRecorder.ondataavailable = event => {
-            if (event.data.size > 0) audioChunks.push(event.data);
-          };
-
+          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
           mediaRecorder.onstop = () => {
             const audioBlob = new Blob(audioChunks, { type: mimeType });
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
-              const payload = JSON.stringify({ type: 'audio', content: reader.result, senderId: socket.id });
+              const payload = JSON.stringify({ type: 'audio', content: reader.result, senderId: socket.id, senderName: myUsername });
               const encrypted = await encryptData(payload);
               socket.emit('sendMessage', encrypted);
             };
-            stream.getTracks().forEach(track => track.stop());
+            stream.getTracks().forEach(t => t.stop());
           };
 
           mediaRecorder.start(1000);
@@ -163,7 +183,6 @@
       }
     });
 
-    // 4. Receive and Decrypt Messages
     socket.on('receiveMessage', async (encryptedData) => {
       try {
         const decryptedJson = await decryptData(encryptedData);
@@ -172,15 +191,23 @@
         const msgDiv = document.createElement('div');
         msgDiv.classList.add('message-bubble');
 
-        // Align right for sent, left for received
+        const nameSpan = document.createElement('div');
+        nameSpan.classList.add('sender-name');
+        nameSpan.innerText = data.senderName || 'Anonymous';
+
         if (data.senderId === socket.id) {
           msgDiv.classList.add('sent');
+          nameSpan.innerText = 'You';
         } else {
           msgDiv.classList.add('received');
         }
 
+        msgDiv.appendChild(nameSpan);
+
         if (data.type === 'text') {
-          msgDiv.innerText = data.content;
+          const textSpan = document.createElement('div');
+          textSpan.innerText = data.content;
+          msgDiv.appendChild(textSpan);
         } else if (data.type === 'image') {
           const img = document.createElement('img');
           img.src = data.content;
@@ -195,7 +222,13 @@
         messagesDiv.appendChild(msgDiv);
         messagesDiv.scrollTop = messagesDiv.scrollHeight;
       } catch (e) {
-        console.error('Decryption failed:', e);
+        const errorDiv = document.createElement('div');
+        errorDiv.classList.add('message-bubble', 'received');
+        errorDiv.style.fontStyle = 'italic';
+        errorDiv.style.color = '#777';
+        errorDiv.innerText = '🔒 [Encrypted Message - Key Mismatch]';
+        messagesDiv.appendChild(errorDiv);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
       }
     });
   </script>

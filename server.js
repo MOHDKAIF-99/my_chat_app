@@ -5,9 +5,8 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 
-// Increase maxHttpBufferSize to 50MB to support long voice notes and images
 const io = new Server(server, {
-  maxHttpBufferSize: 50 * 1024 * 1024
+  maxHttpBufferSize: 50 * 1024 * 1024 // 50MB limit for voice & images
 });
 
 app.use(express.static(__dirname));
