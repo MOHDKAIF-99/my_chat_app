@@ -2,35 +2,213 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Simple Chat UI</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Encrypted Real-Time Chat</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h2>My First Chat</h2>
 
-  <!-- Area where messages will appear -->
-  <div id="chat-box" style="border: 1px solid #ccc; height: 200px; width: 300px; padding: 10px; overflow-y: auto;"></div>
+  <div class="chat-card">
+    <div class="chat-header">🔒 E2E Encrypted Chat</div>
+    
+    <div id="chat-box" class="chat-box"></div>
 
-  <!-- Input and Send button -->
-  <br>
-  <input type="text" id="message-input" placeholder="Type a message...">
-  <button id="send-btn">Send</button>
+    <div class="input-container">
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+      <button id="file-btn" type="button" title="Send Image">📷</button>
+      <button id="mic-btn" type="button" title="Record Voice Message">🎤</button>
+      <input type="text" id="message-input" placeholder="Type a message..." autocomplete="off">
+      <button id="send-btn">Send</button>
+    </div>
+  </div>
 
+  <script src="/socket.io/socket.io.js"></script>
   <script>
+    const socket = io();
+    
+    const username = prompt("Enter your name:") || "Anonymous";
+    const secretKeyInput = prompt("Enter Secret Encryption Key (Must match across users):") || "secret123";
+
     const sendBtn = document.getElementById('send-btn');
+    const fileBtn = document.getElementById('file-btn');
+    const fileInput = document.getElementById('file-input');
+    const micBtn = document.getElementById('mic-btn');
     const messageInput = document.getElementById('message-input');
     const chatBox = document.getElementById('chat-box');
 
-    // Action when "Send" button is clicked
-    sendBtn.addEventListener('click', () => {
-      const text = messageInput.value;
-      
-      if (text.trim() !== "") {
-        // Show the typed message inside the chat box
-        chatBox.innerHTML += `<p><b>You:</b> ${text}</p>`;
-        messageInput.value = ""; // Clear input field
+    let cryptoKey = null;
+
+    // Generate AES-GCM Key
+    async function initKey(passphrase) {
+      const enc = new TextEncoder();
+      const rawKey = enc.encode(passphrase.padEnd(32, '0').slice(0, 32));
+      cryptoKey = await crypto.subtle.importKey(
+        "raw", rawKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]
+      );
+    }
+    initKey(secretKeyInput);
+
+    // Encrypt Text / Image / Audio Payload
+    async function encryptPayload(plainText) {
+      const enc = new TextEncoder();
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ciphertext = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: iv }, cryptoKey, enc.encode(plainText)
+      );
+      return {
+        ciphertext: Array.from(new Uint8Array(ciphertext)),
+        iv: Array.from(iv)
+      };
+    }
+
+    // Decrypt Payload
+    async function decryptPayload(encryptedObj) {
+      try {
+        const dec = new TextDecoder();
+        const decrypted = await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: new Uint8Array(encryptedObj.iv) },
+          cryptoKey,
+          new Uint8Array(encryptedObj.ciphertext)
+        );
+        return dec.decode(decrypted);
+      } catch (e) {
+        return "🔒 [Decryption Failed: Wrong Key]";
       }
+    }
+
+    // Send Text Message
+    async function sendMessage() {
+      const text = messageInput.value.trim();
+      if (text !== "" && cryptoKey) {
+        const encrypted = await encryptPayload(JSON.stringify({ type: 'text', content: text }));
+        socket.emit('sendMessage', {
+          user: username,
+          payload: encrypted,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        });
+        messageInput.value = "";
+      }
+    }
+
+    // Image Upload Handling
+    fileBtn.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (file && cryptoKey) {
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const encrypted = await encryptPayload(JSON.stringify({ type: 'image', content: e.target.result }));
+          socket.emit('sendMessage', {
+            user: username,
+            payload: encrypted,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          });
+          fileInput.value = "";
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    // Voice Recording Logic
+    let mediaRecorder = null;
+    let audioChunks = [];
+    let isRecording = false;
+
+    function stopAndSendVoice() {
+      if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        micBtn.textContent = '🎤';
+        micBtn.classList.remove('recording');
+      }
+    }
+
+    micBtn.addEventListener('click', async () => {
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+              const encrypted = await encryptPayload(JSON.stringify({ type: 'audio', content: e.target.result }));
+              socket.emit('sendMessage', {
+                user: username,
+                payload: encrypted,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              });
+            };
+            reader.readAsDataURL(audioBlob);
+            stream.getTracks().forEach(track => track.stop());
+          };
+
+          mediaRecorder.start();
+          isRecording = true;
+          micBtn.textContent = '⏹️';
+          micBtn.classList.add('recording');
+        } catch (err) {
+          alert("Microphone permission required.");
+        }
+      } else {
+        stopAndSendVoice();
+      }
+    });
+
+    sendBtn.addEventListener('click', () => {
+      if (isRecording) {
+        stopAndSendVoice();
+      } else {
+        sendMessage();
+      }
+    });
+
+    // Listen for Enter Key to either send text or stop recording & send voice
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (isRecording) {
+          e.preventDefault();
+          stopAndSendVoice();
+        } else if (document.activeElement === messageInput) {
+          e.preventDefault();
+          sendMessage();
+        }
+      }
+    });
+
+    // Receive Message Handler
+    socket.on('receiveMessage', async (data) => {
+      const decryptedText = await decryptPayload(data.payload);
+      let contentHtml = "";
+
+      try {
+        const parsed = JSON.parse(decryptedText);
+        if (parsed.type === 'image') {
+          contentHtml = `<img src="${parsed.content}" class="chat-img" />`;
+        } else if (parsed.type === 'audio') {
+          contentHtml = `<audio controls src="${parsed.content}" class="chat-audio"></audio>`;
+        } else {
+          contentHtml = `<div class="message-text">${parsed.content}</div>`;
+        }
+      } catch (e) {
+        contentHtml = `<div class="message-text error-msg">${decryptedText}</div>`;
+      }
+
+      chatBox.innerHTML += `
+        <div class="message">
+          <div class="message-user">${data.user}</div>
+          ${contentHtml}
+          <div class="message-time">${data.time}</div>
+        </div>
+      `;
+      chatBox.scrollTop = chatBox.scrollHeight;
     });
   </script>
 </body>
-
 </html>
