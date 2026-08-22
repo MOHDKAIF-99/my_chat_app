@@ -3,20 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>E2EE Live Chat</title>
+  <title>WhatsApp E2EE Chat</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <div id="chat-container">
-    <h2>Encrypted Real-Time Chat</h2>
+    <div class="chat-header">
+      <h2>🔒 Secure E2EE Chat</h2>
+      <span class="status">● Online</span>
+    </div>
+
     <div id="messages"></div>
-    
+
     <div id="input-container">
+      <input type="file" id="image-input" accept="image/*" style="display:none;">
+      <button id="image-btn" class="action-btn" title="Send Image">📷</button>
+      <button id="record-btn" class="action-btn" title="Record Voice">🎙️</button>
+
       <input type="text" id="message-input" placeholder="Type a message...">
       <button id="send-btn">Send</button>
-      <input type="file" id="image-input" accept="image/*" style="display:none;">
-      <button id="image-btn">📷</button>
-      <button id="record-btn">🎙️ Record</button>
     </div>
   </div>
 
@@ -81,13 +86,18 @@
     const recordBtn = document.getElementById('record-btn');
 
     // Send Text Message
-    sendBtn.addEventListener('click', async () => {
+    async function sendMessage() {
       const text = messageInput.value.trim();
       if (!text) return;
-      const payload = JSON.stringify({ type: 'text', content: text });
+      const payload = JSON.stringify({ type: 'text', content: text, senderId: socket.id });
       const encrypted = await encryptData(payload);
       socket.emit('sendMessage', encrypted);
       messageInput.value = '';
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    messageInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendMessage();
     });
 
     // Send Image
@@ -97,7 +107,7 @@
       if (file) {
         const reader = new FileReader();
         reader.onload = async (e) => {
-          const payload = JSON.stringify({ type: 'image', content: e.target.result });
+          const payload = JSON.stringify({ type: 'image', content: e.target.result, senderId: socket.id });
           const encrypted = await encryptData(payload);
           socket.emit('sendMessage', encrypted);
         };
@@ -105,7 +115,7 @@
       }
     });
 
-    // 3. Audio Recording (Compressed for Long Recordings)
+    // 3. Compressed Audio Recording
     let mediaRecorder;
     let audioChunks = [];
     let isRecording = false;
@@ -131,8 +141,7 @@
             const reader = new FileReader();
             reader.readAsDataURL(audioBlob);
             reader.onloadend = async () => {
-              const base64Audio = reader.result;
-              const payload = JSON.stringify({ type: 'audio', content: base64Audio });
+              const payload = JSON.stringify({ type: 'audio', content: reader.result, senderId: socket.id });
               const encrypted = await encryptData(payload);
               socket.emit('sendMessage', encrypted);
             };
@@ -141,14 +150,16 @@
 
           mediaRecorder.start(1000);
           isRecording = true;
-          recordBtn.innerText = '🔴 Stop';
+          recordBtn.innerText = '⏹️';
+          recordBtn.classList.add('recording');
         } catch (err) {
           alert('Microphone permission required!');
         }
       } else {
         mediaRecorder.stop();
         isRecording = false;
-        recordBtn.innerText = '🎙️ Record';
+        recordBtn.innerText = '🎙️';
+        recordBtn.classList.remove('recording');
       }
     });
 
@@ -159,14 +170,20 @@
         const data = JSON.parse(decryptedJson);
 
         const msgDiv = document.createElement('div');
-        msgDiv.style.margin = "10px 0";
+        msgDiv.classList.add('message-bubble');
+
+        // Align right for sent, left for received
+        if (data.senderId === socket.id) {
+          msgDiv.classList.add('sent');
+        } else {
+          msgDiv.classList.add('received');
+        }
 
         if (data.type === 'text') {
           msgDiv.innerText = data.content;
         } else if (data.type === 'image') {
           const img = document.createElement('img');
           img.src = data.content;
-          img.style.maxWidth = '200px';
           msgDiv.appendChild(img);
         } else if (data.type === 'audio') {
           const audio = document.createElement('audio');
