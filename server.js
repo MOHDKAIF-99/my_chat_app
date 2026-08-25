@@ -5,23 +5,25 @@ const { Server } = require('socket.io');
 const app = express();
 const server = http.createServer(app);
 
+// Increase memory limit to 100MB to allow sending pictures, voice notes, and long videos
 const io = new Server(server, {
-  maxHttpBufferSize: 50 * 1024 * 1024 // 50MB limit for voice & images
+  maxHttpBufferSize: 1e8 // 100 Megabytes limit
 });
-
-app.use(express.static(__dirname));
 
 app.get('/', (req, res) => {
   res.sendFile(__dirname + '/index.html');
 });
 
 io.on('connection', (socket) => {
+  socket.on('joinRoom', (roomId) => {
+    socket.join(roomId);
+  });
+
   socket.on('sendMessage', (data) => {
-    io.emit('receiveMessage', data);
+    io.to(data.roomId).emit('receiveMessage', data);
   });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+server.listen(3000, () => {
+  console.log('Server running on http://localhost:3000');
 });

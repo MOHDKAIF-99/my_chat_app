@@ -2,235 +2,183 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WhatsApp E2EE Chat</title>
-  <link rel="stylesheet" href="style.css">
+  <title> end-to-end encryption chat room </title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #chat-box { border: 1px solid #ccc; height: 350px; width: 400px; padding: 10px; overflow-y: auto; margin-bottom: 10px; border-radius: 5px; }
+    input, button { padding: 8px; margin-right: 5px; margin-bottom: 5px; }
+    .system-msg { color: #888; font-style: italic; }
+    img, video { max-width: 250px; border-radius: 8px; margin-top: 5px; display: block; }
+    audio { margin-top: 5px; display: block; }
+  </style>
 </head>
 <body>
 
-  <!-- Join / Encryption Setup Screen -->
-  <div id="join-overlay">
-    <div class="join-card">
-      <h2>🔒 E2EE Chat Setup</h2>
-      <p>Enter your username and a shared secret key to generate your encryption key.</p>
-      <input type="text" id="username-input" placeholder="Your Name (e.g., Kaif)">
-      <input type="password" id="key-input" placeholder="Secret Key (e.g., Room123Key)">
-      <button id="join-btn">Enter Secure Chat</button>
-    </div>
+  <h2> Secure Chat Room</h2>
+
+  <!-- Room Setup -->
+  <div>
+    <input type="text" id="username-input" placeholder="Your Name">
+    <input type="text" id="room-input" placeholder="Secret Room Key">
+    <button id="join-btn">Join Room</button>
   </div>
 
-  <!-- Main WhatsApp Chat UI -->
-  <div id="chat-container" style="display: none;">
-    <div class="chat-header">
-      <div>
-        <h2>🔒 Encrypted Room</h2>
-        <span class="status">● Connected</span>
-      </div>
-      <span id="current-user-tag"></span>
-    </div>
+  <hr style="margin: 15px 0;">
 
-    <div id="messages"></div>
+  <!-- Messages Window -->
+  <div id="chat-box"></div>
 
-    <div id="input-container">
-      <input type="file" id="image-input" accept="image/*" style="display:none;">
-      <button id="image-btn" class="action-btn" title="Send Image">📷</button>
-      <button id="record-btn" class="action-btn" title="Record Voice">🎙️</button>
+  <!-- Send Controls -->
+  <div>
+    <input type="text" id="message-input" placeholder="Type a message..." disabled>
+    <button id="send-btn" disabled>Send</button>
+    
+    <br><br>
 
-      <input type="text" id="message-input" placeholder="Type a message...">
-      <button id="send-btn">Send</button>
-    </div>
+    <!-- Media Controls -->
+    <button id="record-btn" disabled>🎤 Start Recording</button>
+    <label for="file-input" style="font-size: 14px; font-weight: bold;">📁 Send Picture/Video:</label>
+    <input type="file" id="file-input" accept="image/*,video/*" disabled>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
-    let cryptoKey = null;
-    let myUsername = "Anonymous";
 
-    async function initKey(passphrase) {
-      const enc = new TextEncoder();
-      const keyMaterial = await crypto.subtle.importKey(
-        "raw", enc.encode(passphrase), { name: "PBKDF2" }, false, ["deriveKey"]
-      );
-      cryptoKey = await crypto.subtle.deriveKey(
-        {
-          name: "PBKDF2",
-          salt: enc.encode("fixed-salt-1234"),
-          iterations: 100000,
-          hash: "SHA-256"
-        },
-        keyMaterial,
-        { name: "AES-GCM", length: 256 },
-        false,
-        ["encrypt", "decrypt"]
-      );
-    }
-
-    async function encryptData(text) {
-      const enc = new TextEncoder();
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-      const encrypted = await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: iv },
-        cryptoKey,
-        enc.encode(text)
-      );
-      return { cipherText: Array.from(new Uint8Array(encrypted)), iv: Array.from(iv) };
-    }
-
-    async function decryptData(encryptedObj) {
-      const dec = new TextDecoder();
-      const decrypted = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: new Uint8Array(encryptedObj.iv) },
-        cryptoKey,
-        new Uint8Array(encryptedObj.cipherText)
-      );
-      return dec.decode(decrypted);
-    }
-
-    // Modal Setup
-    const joinOverlay = document.getElementById('join-overlay');
-    const chatContainer = document.getElementById('chat-container');
     const usernameInput = document.getElementById('username-input');
-    const keyInput = document.getElementById('key-input');
+    const roomInput = document.getElementById('room-input');
     const joinBtn = document.getElementById('join-btn');
-    const currentUserTag = document.getElementById('current-user-tag');
+    const sendBtn = document.getElementById('send-btn');
+    const messageInput = document.getElementById('message-input');
+    const chatBox = document.getElementById('chat-box');
+    const recordBtn = document.getElementById('record-btn');
+    const fileInput = document.getElementById('file-input');
 
-    joinBtn.addEventListener('click', async () => {
-      const name = usernameInput.value.trim();
-      const pass = keyInput.value.trim();
-      if (!name || !pass) {
-        alert("Please enter both Username and Secret Key!");
-        return;
+    let currentRoom = "";
+    let username = "";
+    let mediaRecorder;
+    let audioChunks = [];
+
+    // Join room
+    joinBtn.addEventListener('click', () => {
+      currentRoom = roomInput.value.trim();
+      username = usernameInput.value.trim() || 'Anonymous';
+
+      if (currentRoom !== "") {
+        socket.emit('joinRoom', currentRoom);
+        
+        // Enable UI
+        messageInput.disabled = false;
+        sendBtn.disabled = false;
+        recordBtn.disabled = false;
+        fileInput.disabled = false;
+        
+        roomInput.disabled = true;
+        usernameInput.disabled = true;
+        joinBtn.disabled = true;
+
+        chatBox.innerHTML += `<p class="system-msg">Joined Room: <b>${currentRoom}</b></p>`;
       }
-      myUsername = name;
-      await initKey(pass);
-      joinOverlay.style.display = 'none';
-      chatContainer.style.display = 'flex';
-      currentUserTag.innerText = `Logged in as: ${myUsername}`;
     });
 
-    // Chat Logic
-    const messagesDiv = document.getElementById('messages');
-    const messageInput = document.getElementById('message-input');
-    const sendBtn = document.getElementById('send-btn');
-    const imageBtn = document.getElementById('image-btn');
-    const imageInput = document.getElementById('image-input');
-    const recordBtn = document.getElementById('record-btn');
-
-    async function sendMessage() {
+    // Send Text Message
+    function sendTextMessage() {
       const text = messageInput.value.trim();
-      if (!text) return;
-      const payload = JSON.stringify({ type: 'text', content: text, senderId: socket.id, senderName: myUsername });
-      const encrypted = await encryptData(payload);
-      socket.emit('sendMessage', encrypted);
-      messageInput.value = '';
+      if (text !== "" && currentRoom !== "") {
+        socket.emit('sendMessage', {
+          roomId: currentRoom,
+          sender: username,
+          type: 'text',
+          content: text
+        });
+        messageInput.value = "";
+      }
     }
 
-    sendBtn.addEventListener('click', sendMessage);
-    messageInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') sendMessage();
-    });
+    // Trigger send on click
+    sendBtn.addEventListener('click', sendTextMessage);
 
-    imageBtn.addEventListener('click', () => imageInput.click());
-    imageInput.addEventListener('change', () => {
-      const file = imageInput.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = async (e) => {
-          const payload = JSON.stringify({ type: 'image', content: e.target.result, senderId: socket.id, senderName: myUsername });
-          const encrypted = await encryptData(payload);
-          socket.emit('sendMessage', encrypted);
-        };
-        reader.readAsDataURL(file);
+    // Trigger send when pressing Enter key
+    messageInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendTextMessage();
       }
     });
 
-    let mediaRecorder, audioChunks = [], isRecording = false;
+    // Send Image or Video
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file || !currentRoom) return;
+
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        let fileType = 'file';
+        if (file.type.startsWith('image/')) fileType = 'image';
+        if (file.type.startsWith('video/')) fileType = 'video';
+
+        socket.emit('sendMessage', {
+          roomId: currentRoom,
+          sender: username,
+          type: fileType,
+          content: reader.result
+        });
+        fileInput.value = ''; 
+      };
+    });
+
+    // Record & Send Voice Message
     recordBtn.addEventListener('click', async () => {
-      if (!isRecording) {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          let mimeType = 'audio/webm;codecs=opus';
-          if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'audio/ogg;codecs=opus';
+      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-          mediaRecorder = new MediaRecorder(stream, { mimeType });
-          audioChunks = [];
-          mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
-          mediaRecorder.onstop = () => {
-            const audioBlob = new Blob(audioChunks, { type: mimeType });
-            const reader = new FileReader();
-            reader.readAsDataURL(audioBlob);
-            reader.onloadend = async () => {
-              const payload = JSON.stringify({ type: 'audio', content: reader.result, senderId: socket.id, senderName: myUsername });
-              const encrypted = await encryptData(payload);
-              socket.emit('sendMessage', encrypted);
-            };
-            stream.getTracks().forEach(t => t.stop());
+        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
+        
+        mediaRecorder.onstop = () => {
+          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(audioBlob);
+          reader.onloadend = () => {
+            socket.emit('sendMessage', {
+              roomId: currentRoom,
+              sender: username,
+              type: 'audio',
+              content: reader.result
+            });
           };
+        };
 
-          mediaRecorder.start(1000);
-          isRecording = true;
-          recordBtn.innerText = '⏹️';
-          recordBtn.classList.add('recording');
-        } catch (err) {
-          alert('Microphone permission required!');
-        }
+        mediaRecorder.start();
+        recordBtn.innerText = '⏹️ Stop & Send Voice';
+        recordBtn.style.background = '#ff8888';
       } else {
         mediaRecorder.stop();
-        isRecording = false;
-        recordBtn.innerText = '🎙️';
-        recordBtn.classList.remove('recording');
+        recordBtn.innerText = '🎤 Start Recording';
+        recordBtn.style.background = '';
       }
     });
 
-    socket.on('receiveMessage', async (encryptedData) => {
-      try {
-        const decryptedJson = await decryptData(encryptedData);
-        const data = JSON.parse(decryptedJson);
+    // Display Incoming Messages
+    socket.on('receiveMessage', (data) => {
+      let htmlContent = '';
 
-        const msgDiv = document.createElement('div');
-        msgDiv.classList.add('message-bubble');
-
-        const nameSpan = document.createElement('div');
-        nameSpan.classList.add('sender-name');
-        nameSpan.innerText = data.senderName || 'Anonymous';
-
-        if (data.senderId === socket.id) {
-          msgDiv.classList.add('sent');
-          nameSpan.innerText = 'You';
-        } else {
-          msgDiv.classList.add('received');
-        }
-
-        msgDiv.appendChild(nameSpan);
-
-        if (data.type === 'text') {
-          const textSpan = document.createElement('div');
-          textSpan.innerText = data.content;
-          msgDiv.appendChild(textSpan);
-        } else if (data.type === 'image') {
-          const img = document.createElement('img');
-          img.src = data.content;
-          msgDiv.appendChild(img);
-        } else if (data.type === 'audio') {
-          const audio = document.createElement('audio');
-          audio.controls = true;
-          audio.src = data.content;
-          msgDiv.appendChild(audio);
-        }
-
-        messagesDiv.appendChild(msgDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
-      } catch (e) {
-        const errorDiv = document.createElement('div');
-        errorDiv.classList.add('message-bubble', 'received');
-        errorDiv.style.fontStyle = 'italic';
-        errorDiv.style.color = '#777';
-        errorDiv.innerText = '🔒 [Encrypted Message - Key Mismatch]';
-        messagesDiv.appendChild(errorDiv);
-        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+      if (data.type === 'text') {
+        htmlContent = `<span>${data.content}</span>`;
+      } else if (data.type === 'image') {
+        htmlContent = `<img src="${data.content}" alt="Image">`;
+      } else if (data.type === 'video') {
+        htmlContent = `<video src="${data.content}" controls></video>`;
+      } else if (data.type === 'audio') {
+        htmlContent = `<audio src="${data.content}" controls></audio>`;
       }
+
+      chatBox.innerHTML += `<p><b>${data.sender}:</b> ${htmlContent}</p>`;
+      chatBox.scrollTop = chatBox.scrollHeight;
     });
   </script>
+
 </body>
 </html>
