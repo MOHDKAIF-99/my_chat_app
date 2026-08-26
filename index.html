@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Secure Chat Room</title>
   <link rel="stylesheet" href="style.css">
-  <!-- WaveSurfer.js for Voice Note Audio Waveforms -->
   <script src="https://unpkg.com/wavesurfer.js@7"></script>
 </head>
 <body>
@@ -14,7 +13,6 @@
     <div class="chat-header">
       <h2>Secure Chat Room</h2>
 
-      <!-- Join Form & Custom Avatar Picker -->
       <div class="join-form">
         <div class="avatar-picker" id="avatar-picker" title="Click to view & edit profile">
           <img id="avatar-preview" src="" alt="Avatar">
@@ -26,18 +24,16 @@
       </div>
     </div>
 
-    <!-- Message Feed -->
     <div class="chat-messages" id="chat-messages">
       <div class="message-wrapper">
         <img src="https://api.dicebear.com/7.x/bottts/svg?seed=System" class="avatar-img" alt="System">
         <div class="message">
           <div class="author">System</div>
-          <div>Welcome! Send messages, attachments, or record voice notes with waveforms and speed control.</div>
+          <div>Welcome! Enter a Room ID and click Join Room to start chatting.</div>
         </div>
       </div>
     </div>
 
-    <!-- Footer Input Controls -->
     <div class="chat-footer">
       <input type="text" id="message-input" placeholder="Type a message...">
       <input type="file" id="file-input" accept="image/*,video/*,audio/*" style="display: none;">
@@ -47,7 +43,7 @@
     </div>
   </div>
 
-  <!-- Profile View & Edit Modal -->
+  <!-- Profile Modal -->
   <div id="profile-modal" class="modal">
     <div class="profile-card">
       <span class="modal-close" id="profile-modal-close">&times;</span>
@@ -70,14 +66,11 @@
     <img id="modal-img" src="" alt="Full size preview">
   </div>
 
-  <!-- Socket.io -->
   <script src="/socket.io/socket.io.js"></script>
 
-  <!-- Application Logic -->
   <script>
     const socket = io();
 
-    // DOM Elements
     const usernameInput = document.getElementById('username');
     const roomInput = document.getElementById('room');
     const joinBtn = document.getElementById('join-btn');
@@ -87,7 +80,6 @@
     const micBtn = document.getElementById('mic-btn');
     const chatMessages = document.getElementById('chat-messages');
 
-    // Avatar & Profile Modal Elements
     const avatarPicker = document.getElementById('avatar-picker');
     const avatarPreview = document.getElementById('avatar-preview');
     const avatarInput = document.getElementById('avatar-input');
@@ -104,12 +96,30 @@
     avatarPreview.src = currentAvatar;
 
     let currentRoom = '';
-    let currentUsername = '';
+    let currentUsername = 'Anonymous';
 
-    // Voice Recorder Variables
     let mediaRecorder, audioChunks = [], isRecording = false;
 
-    // 1. Profile Modal Control
+    // Helper: Auto-Join Room if not explicitly joined
+    function ensureRoomJoined() {
+      if (!socket.connected) {
+        alert('Not connected to server. Please check internet connection.');
+        return false;
+      }
+      currentUsername = usernameInput.value.trim() || currentUsername;
+      const typedRoom = roomInput.value.trim();
+
+      if (!currentRoom && typedRoom) {
+        currentRoom = typedRoom;
+        socket.emit('join_room', { room: currentRoom, username: currentUsername });
+      } else if (!currentRoom && !typedRoom) {
+        alert('Please enter a Room ID and click Join Room first!');
+        return false;
+      }
+      return true;
+    }
+
+    // Profile Modal
     avatarPicker.onclick = () => {
       tempAvatar = currentAvatar;
       profileModalImg.src = currentAvatar;
@@ -117,10 +127,7 @@
       profileModal.style.display = 'flex';
     };
 
-    profileModalClose.onclick = () => {
-      profileModal.style.display = 'none';
-    };
-
+    profileModalClose.onclick = () => profileModal.style.display = 'none';
     changeAvatarBtn.onclick = () => avatarInput.click();
 
     avatarInput.onchange = (e) => {
@@ -144,16 +151,12 @@
         currentUsername = newUsername;
         usernameInput.value = currentUsername;
       }
-      
       profileModal.style.display = 'none';
     };
 
-    // Keep header username field synced with currentUsername variable
-    usernameInput.oninput = () => {
-      currentUsername = usernameInput.value.trim();
-    };
+    usernameInput.oninput = () => { currentUsername = usernameInput.value.trim(); };
 
-    // 2. Join Room & Emit Online Status
+    // Join Room Button
     joinBtn.onclick = () => {
       currentUsername = usernameInput.value.trim() || 'Anonymous';
       currentRoom = roomInput.value.trim();
@@ -166,7 +169,6 @@
       }
     };
 
-    // 3. Online Status Notification Listener
     socket.on('user_online', (data) => {
       const notification = document.createElement('div');
       notification.className = 'system-notification';
@@ -175,10 +177,12 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 
-    // 4. Send Text Message
+    // Send Text Message
     sendBtn.onclick = () => {
+      if (!ensureRoomJoined()) return;
+
       const text = messageInput.value.trim();
-      if (text && currentRoom) {
+      if (text) {
         socket.emit('send_message', {
           room: currentRoom,
           author: currentUsername,
@@ -187,20 +191,20 @@
           content: text
         });
         messageInput.value = '';
-      } else if (!currentRoom) {
-        alert('Please join a room first!');
       }
     };
 
     messageInput.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
 
-    // 5. Send Attachment (With Size Check)
+    // Send File Attachment
     fileInput.onchange = (e) => {
+      if (!ensureRoomJoined()) return;
+
       const file = e.target.files[0];
-      if (!file || !currentRoom) return;
+      if (!file) return;
 
       if (file.size > 50 * 1024 * 1024) {
-        alert('File size is too large! Please upload files under 50 MB.');
+        alert('File size is too large! Maximum limit is 50 MB.');
         fileInput.value = '';
         return;
       }
@@ -220,9 +224,9 @@
       fileInput.value = '';
     };
 
-    // 6. Voice Recording & WaveSurfer Waveform Display
+    // Voice Message Handler
     micBtn.onclick = async () => {
-      if (!currentRoom) return alert('Please join a room first!');
+      if (!ensureRoomJoined()) return;
 
       if (!isRecording) {
         try {
@@ -251,7 +255,7 @@
           micBtn.classList.add('recording');
           micBtn.innerText = '🛑';
         } catch (err) {
-          alert('Microphone access was denied or is not supported.');
+          alert('Microphone permission denied or unsupported.');
         }
       } else {
         mediaRecorder.stop();
@@ -261,7 +265,7 @@
       }
     };
 
-    // 7. Message Listener
+    // Message Receiver
     socket.on('receive_message', (data) => {
       const wrapper = document.createElement('div');
       wrapper.className = 'message-wrapper';
@@ -309,14 +313,12 @@
             url: data.content
           });
 
-          // Play/Pause Control
           const btn = document.getElementById(`btn-${id}`);
           btn.onclick = () => ws.playPause();
           ws.on('play', () => btn.innerText = '⏸');
           ws.on('pause', () => btn.innerText = '▶');
           ws.on('finish', () => btn.innerText = '▶');
 
-          // Playback Speed Control
           const speedBtn = document.getElementById(`speed-${id}`);
           const speeds = [1, 1.25, 1.5, 2];
           let speedIndex = 0;
@@ -334,7 +336,7 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 
-    // 8. Lightbox Handlers
+    // Lightbox
     const modal = document.getElementById('image-modal');
     const modalImg = document.getElementById('modal-img');
     document.getElementById('modal-close').onclick = () => modal.style.display = 'none';
