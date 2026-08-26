@@ -2,183 +2,274 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title> end-to-end encryption chat room </title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    #chat-box { border: 1px solid #ccc; height: 350px; width: 400px; padding: 10px; overflow-y: auto; margin-bottom: 10px; border-radius: 5px; }
-    input, button { padding: 8px; margin-right: 5px; margin-bottom: 5px; }
-    .system-msg { color: #888; font-style: italic; }
-    img, video { max-width: 250px; border-radius: 8px; margin-top: 5px; display: block; }
-    audio { margin-top: 5px; display: block; }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secure Chat Room</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- WaveSurfer.js for Voice Note Audio Waveforms -->
+  <script src="https://unpkg.com/wavesurfer.js@7"></script>
 </head>
 <body>
 
-  <h2> Secure Chat Room</h2>
+  <div class="chat-card">
+    <div class="chat-header">
+      <h2>Secure Chat Room</h2>
 
-  <!-- Room Setup -->
-  <div>
-    <input type="text" id="username-input" placeholder="Your Name">
-    <input type="text" id="room-input" placeholder="Secret Room Key">
-    <button id="join-btn">Join Room</button>
+      <!-- Join Form & Custom Avatar Picker -->
+      <div class="join-form">
+        <div class="avatar-picker" title="Click to change profile picture">
+          <img id="avatar-preview" src="" alt="Avatar">
+          <input type="file" id="avatar-input" accept="image/*" style="display: none;">
+        </div>
+        <input type="text" id="username" placeholder="Username">
+        <input type="text" id="room" placeholder="Room ID">
+        <button id="join-btn">Join Room</button>
+      </div>
+    </div>
+
+    <!-- Message Feed -->
+    <div class="chat-messages" id="chat-messages">
+      <div class="message-wrapper">
+        <img src="https://api.dicebear.com/7.x/bottts/svg?seed=System" class="avatar-img" alt="System">
+        <div class="message">
+          <div class="author">System</div>
+          <div>Welcome! Send messages, attachments, or record voice notes with waveforms and speed control.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer Input Controls -->
+    <div class="chat-footer">
+      <input type="text" id="message-input" placeholder="Type a message...">
+      <input type="file" id="file-input" accept="image/*,video/*,audio/*" style="display: none;">
+      <button onclick="document.getElementById('file-input').click()" class="icon-btn" title="Attach File">📎</button>
+      <button id="mic-btn" class="icon-btn" title="Record Voice Message">🎤</button>
+      <button id="send-btn">Send</button>
+    </div>
   </div>
 
-  <hr style="margin: 15px 0;">
-
-  <!-- Messages Window -->
-  <div id="chat-box"></div>
-
-  <!-- Send Controls -->
-  <div>
-    <input type="text" id="message-input" placeholder="Type a message..." disabled>
-    <button id="send-btn" disabled>Send</button>
-    
-    <br><br>
-
-    <!-- Media Controls -->
-    <button id="record-btn" disabled>🎤 Start Recording</button>
-    <label for="file-input" style="font-size: 14px; font-weight: bold;">📁 Send Picture/Video:</label>
-    <input type="file" id="file-input" accept="image/*,video/*" disabled>
+  <!-- Image Lightbox Modal -->
+  <div id="image-modal" class="modal">
+    <span class="modal-close" id="modal-close">&times;</span>
+    <img id="modal-img" src="" alt="Full size preview">
   </div>
 
+  <!-- Socket.io -->
   <script src="/socket.io/socket.io.js"></script>
+
+  <!-- Application Logic -->
   <script>
     const socket = io();
 
-    const usernameInput = document.getElementById('username-input');
-    const roomInput = document.getElementById('room-input');
+    // DOM Elements
+    const usernameInput = document.getElementById('username');
+    const roomInput = document.getElementById('room');
     const joinBtn = document.getElementById('join-btn');
-    const sendBtn = document.getElementById('send-btn');
     const messageInput = document.getElementById('message-input');
-    const chatBox = document.getElementById('chat-box');
-    const recordBtn = document.getElementById('record-btn');
+    const sendBtn = document.getElementById('send-btn');
     const fileInput = document.getElementById('file-input');
+    const micBtn = document.getElementById('mic-btn');
+    const chatMessages = document.getElementById('chat-messages');
 
-    let currentRoom = "";
-    let username = "";
-    let mediaRecorder;
-    let audioChunks = [];
+    // Avatar Elements
+    const avatarPreview = document.getElementById('avatar-preview');
+    const avatarInput = document.getElementById('avatar-input');
+    let currentAvatar = 'https://api.dicebear.com/7.x/bottts/svg?seed=' + Math.floor(Math.random() * 10000);
+    avatarPreview.src = currentAvatar;
 
-    // Join room
-    joinBtn.addEventListener('click', () => {
-      currentRoom = roomInput.value.trim();
-      username = usernameInput.value.trim() || 'Anonymous';
+    let currentRoom = '';
+    let currentUsername = '';
 
-      if (currentRoom !== "") {
-        socket.emit('joinRoom', currentRoom);
-        
-        // Enable UI
-        messageInput.disabled = false;
-        sendBtn.disabled = false;
-        recordBtn.disabled = false;
-        fileInput.disabled = false;
-        
-        roomInput.disabled = true;
-        usernameInput.disabled = true;
-        joinBtn.disabled = true;
+    // Voice Recorder Variables
+    let mediaRecorder, audioChunks = [], isRecording = false;
 
-        chatBox.innerHTML += `<p class="system-msg">Joined Room: <b>${currentRoom}</b></p>`;
+    // 1. Avatar Uploader
+    avatarPreview.onclick = () => avatarInput.click();
+    avatarInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          currentAvatar = reader.result;
+          avatarPreview.src = currentAvatar;
+        };
+        reader.readAsDataURL(file);
       }
-    });
+    };
 
-    // Send Text Message
-    function sendTextMessage() {
+    // 2. Join Room
+    joinBtn.onclick = () => {
+      currentUsername = usernameInput.value.trim() || 'Anonymous';
+      currentRoom = roomInput.value.trim();
+
+      if (currentRoom) {
+        socket.emit('join_room', currentRoom);
+        alert(`Joined Room: ${currentRoom}`);
+      } else {
+        alert('Please enter a Room ID first.');
+      }
+    };
+
+    // 3. Send Text Message
+    sendBtn.onclick = () => {
       const text = messageInput.value.trim();
-      if (text !== "" && currentRoom !== "") {
-        socket.emit('sendMessage', {
-          roomId: currentRoom,
-          sender: username,
+      if (text && currentRoom) {
+        socket.emit('send_message', {
+          room: currentRoom,
+          author: currentUsername,
+          avatar: currentAvatar,
           type: 'text',
           content: text
         });
-        messageInput.value = "";
+        messageInput.value = '';
+      } else if (!currentRoom) {
+        alert('Please join a room first!');
       }
-    }
+    };
 
-    // Trigger send on click
-    sendBtn.addEventListener('click', sendTextMessage);
+    messageInput.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
 
-    // Trigger send when pressing Enter key
-    messageInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendTextMessage();
-      }
-    });
-
-    // Send Image or Video
-    fileInput.addEventListener('change', () => {
-      const file = fileInput.files[0];
+    // 4. Send Attachment
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
       if (!file || !currentRoom) return;
 
       const reader = new FileReader();
-      reader.readAsDataURL(file);
       reader.onload = () => {
-        let fileType = 'file';
-        if (file.type.startsWith('image/')) fileType = 'image';
-        if (file.type.startsWith('video/')) fileType = 'video';
-
-        socket.emit('sendMessage', {
-          roomId: currentRoom,
-          sender: username,
-          type: fileType,
+        socket.emit('send_message', {
+          room: currentRoom,
+          author: currentUsername,
+          avatar: currentAvatar,
+          type: 'file',
+          fileType: file.type,
           content: reader.result
         });
-        fileInput.value = ''; 
       };
-    });
+      reader.readAsDataURL(file);
+      fileInput.value = '';
+    };
 
-    // Record & Send Voice Message
-    recordBtn.addEventListener('click', async () => {
-      if (!mediaRecorder || mediaRecorder.state === 'inactive') {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        mediaRecorder = new MediaRecorder(stream);
-        audioChunks = [];
+    // 5. Voice Recording & WaveSurfer Waveform Display
+    micBtn.onclick = async () => {
+      if (!currentRoom) return alert('Please join a room first!');
 
-        mediaRecorder.ondataavailable = (e) => audioChunks.push(e.data);
-        
-        mediaRecorder.onstop = () => {
-          const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-          const reader = new FileReader();
-          reader.readAsDataURL(audioBlob);
-          reader.onloadend = () => {
-            socket.emit('sendMessage', {
-              roomId: currentRoom,
-              sender: username,
-              type: 'audio',
-              content: reader.result
-            });
+      if (!isRecording) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+          mediaRecorder.onstop = () => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              socket.emit('send_message', {
+                room: currentRoom,
+                author: currentUsername,
+                avatar: currentAvatar,
+                type: 'voice',
+                content: reader.result
+              });
+            };
+            reader.readAsDataURL(new Blob(audioChunks, { type: 'audio/webm' }));
+            stream.getTracks().forEach(t => t.stop());
           };
-        };
 
-        mediaRecorder.start();
-        recordBtn.innerText = '⏹️ Stop & Send Voice';
-        recordBtn.style.background = '#ff8888';
+          mediaRecorder.start();
+          isRecording = true;
+          micBtn.classList.add('recording');
+          micBtn.innerText = '🛑';
+        } catch (err) {
+          alert('Microphone access was denied or is not supported.');
+        }
       } else {
         mediaRecorder.stop();
-        recordBtn.innerText = '🎤 Start Recording';
-        recordBtn.style.background = '';
+        isRecording = false;
+        micBtn.classList.remove('recording');
+        micBtn.innerText = '🎤';
       }
-    });
+    };
 
-    // Display Incoming Messages
-    socket.on('receiveMessage', (data) => {
-      let htmlContent = '';
+    // 6. Message Listener
+    socket.on('receive_message', (data) => {
+      const wrapper = document.createElement('div');
+      wrapper.className = 'message-wrapper';
+      wrapper.innerHTML = `
+        <img src="${data.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=Anon'}" class="avatar-img">
+        <div class="message">
+          <div class="author">${data.author}</div>
+        </div>
+      `;
+      const msgDiv = wrapper.querySelector('.message');
 
       if (data.type === 'text') {
-        htmlContent = `<span>${data.content}</span>`;
-      } else if (data.type === 'image') {
-        htmlContent = `<img src="${data.content}" alt="Image">`;
-      } else if (data.type === 'video') {
-        htmlContent = `<video src="${data.content}" controls></video>`;
-      } else if (data.type === 'audio') {
-        htmlContent = `<audio src="${data.content}" controls></audio>`;
+        const textNode = document.createElement('div');
+        textNode.innerText = data.content;
+        msgDiv.appendChild(textNode);
+      } else if (data.type === 'file') {
+        if (data.fileType.startsWith('image/')) {
+          msgDiv.innerHTML += `<img src="${data.content}" alt="Attachment">`;
+        } else if (data.fileType.startsWith('video/')) {
+          msgDiv.innerHTML += `<video controls src="${data.content}"></video>`;
+        }
+      } else if (data.type === 'voice') {
+        const id = 'wave-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+        msgDiv.innerHTML += `
+          <div class="voice-note-card">
+            <div class="voice-header">🎙️ Voice Note</div>
+            <div class="voice-body">
+              <button class="play-voice-btn icon-only" id="btn-${id}">▶</button>
+              <div id="${id}" class="waveform-container"></div>
+              <button class="speed-voice-btn" id="speed-${id}">1x</button>
+            </div>
+          </div>
+        `;
+
+        setTimeout(() => {
+          const ws = WaveSurfer.create({
+            container: `#${id}`,
+            waveColor: '#475569',
+            progressColor: '#10b981',
+            cursorColor: '#38bdf8',
+            barWidth: 2,
+            height: 35,
+            url: data.content
+          });
+
+          // Play/Pause Control
+          const btn = document.getElementById(`btn-${id}`);
+          btn.onclick = () => ws.playPause();
+          ws.on('play', () => btn.innerText = '⏸');
+          ws.on('pause', () => btn.innerText = '▶');
+          ws.on('finish', () => btn.innerText = '▶');
+
+          // Playback Speed Control
+          const speedBtn = document.getElementById(`speed-${id}`);
+          const speeds = [1, 1.25, 1.5, 2];
+          let speedIndex = 0;
+
+          speedBtn.onclick = () => {
+            speedIndex = (speedIndex + 1) % speeds.length;
+            const newSpeed = speeds[speedIndex];
+            ws.setPlaybackRate(newSpeed);
+            speedBtn.innerText = `${newSpeed}x`;
+          };
+        }, 50);
       }
 
-      chatBox.innerHTML += `<p><b>${data.sender}:</b> ${htmlContent}</p>`;
-      chatBox.scrollTop = chatBox.scrollHeight;
+      chatMessages.appendChild(wrapper);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
     });
-  </script>
 
+    // 7. Lightbox Handlers
+    const modal = document.getElementById('image-modal');
+    const modalImg = document.getElementById('modal-img');
+    document.getElementById('modal-close').onclick = () => modal.style.display = 'none';
+    chatMessages.onclick = (e) => {
+      if (e.target.tagName === 'IMG' && !e.target.classList.contains('avatar-img')) {
+        modal.style.display = 'flex';
+        modalImg.src = e.target.src;
+      }
+    };
+  </script>
 </body>
 </html>
