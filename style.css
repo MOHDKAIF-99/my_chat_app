@@ -54,6 +54,11 @@ body {
   cursor: pointer;
   overflow: hidden;
   background: #0f172a;
+  transition: transform 0.2s;
+}
+
+.avatar-picker:hover {
+  transform: scale(1.08);
 }
 
 .avatar-picker img {
@@ -148,6 +153,19 @@ button:hover { background: #2563eb; }
   font-size: 0.85rem;
 }
 
+/* System Notifications for Online Status */
+.system-notification {
+  align-self: center;
+  background: #1e293b;
+  border: 1px solid #10b981;
+  color: #10b981;
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  text-align: center;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+}
+
 /* Voice Note & Speed Controls */
 .voice-note-card {
   background: #0f172a;
@@ -235,7 +253,7 @@ button:hover { background: #2563eb; }
   flex: 1;
 }
 
-/* Modal Lightbox */
+/* Modal Lightbox & Profile Card */
 .modal {
   display: none;
   position: fixed;
@@ -244,21 +262,92 @@ button:hover { background: #2563eb; }
   left: 0;
   width: 100%;
   height: 100%;
-  background-color: rgba(0, 0, 0, 0.9);
+  background-color: rgba(0, 0, 0, 0.85);
   justify-content: center;
   align-items: center;
 }
 
-.modal img {
+.modal img#modal-img {
   max-width: 90vw;
   max-height: 90vh;
 }
 
 .modal-close {
   position: absolute;
-  top: 20px;
-  right: 30px;
+  top: 15px;
+  right: 20px;
   color: #fff;
-  font-size: 35px;
+  font-size: 30px;
   cursor: pointer;
+}
+
+.profile-card {
+  position: relative;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  padding: 25px;
+  width: 90%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+}
+
+.profile-card h3 {
+  color: #38bdf8;
+  font-size: 1.2rem;
+}
+
+.profile-avatar-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.profile-avatar-wrapper img {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  border: 3px solid #38bdf8;
+  object-fit: cover;
+  background: #0f172a;
+}
+
+#change-avatar-btn {
+  background: #334155;
+  font-size: 0.8rem;
+  padding: 6px 12px;
+}
+
+#change-avatar-btn:hover {
+  background: #475569;
+}
+
+.profile-input-group {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-input-group label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+}
+
+.profile-input-group input {
+  width: 100%;
+}
+
+#save-profile-btn {
+  width: 100%;
+  background: #10b981;
+}
+
+#save-profile-btn:hover {
+  background: #059669;
 }

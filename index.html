@@ -16,7 +16,7 @@
 
       <!-- Join Form & Custom Avatar Picker -->
       <div class="join-form">
-        <div class="avatar-picker" title="Click to change profile picture">
+        <div class="avatar-picker" id="avatar-picker" title="Click to view & edit profile">
           <img id="avatar-preview" src="" alt="Avatar">
           <input type="file" id="avatar-input" accept="image/*" style="display: none;">
         </div>
@@ -47,6 +47,23 @@
     </div>
   </div>
 
+  <!-- Profile View & Edit Modal -->
+  <div id="profile-modal" class="modal">
+    <div class="profile-card">
+      <span class="modal-close" id="profile-modal-close">&times;</span>
+      <h3>Profile Options</h3>
+      <div class="profile-avatar-wrapper">
+        <img id="profile-modal-img" src="" alt="Profile Picture">
+        <button id="change-avatar-btn">📷 Change Photo</button>
+      </div>
+      <div class="profile-input-group">
+        <label for="profile-username-input">Username</label>
+        <input type="text" id="profile-username-input" placeholder="Enter username">
+      </div>
+      <button id="save-profile-btn">Save Profile</button>
+    </div>
+  </div>
+
   <!-- Image Lightbox Modal -->
   <div id="image-modal" class="modal">
     <span class="modal-close" id="modal-close">&times;</span>
@@ -70,10 +87,20 @@
     const micBtn = document.getElementById('mic-btn');
     const chatMessages = document.getElementById('chat-messages');
 
-    // Avatar Elements
+    // Avatar & Profile Modal Elements
+    const avatarPicker = document.getElementById('avatar-picker');
     const avatarPreview = document.getElementById('avatar-preview');
     const avatarInput = document.getElementById('avatar-input');
+    
+    const profileModal = document.getElementById('profile-modal');
+    const profileModalClose = document.getElementById('profile-modal-close');
+    const profileModalImg = document.getElementById('profile-modal-img');
+    const profileUsernameInput = document.getElementById('profile-username-input');
+    const changeAvatarBtn = document.getElementById('change-avatar-btn');
+    const saveProfileBtn = document.getElementById('save-profile-btn');
+
     let currentAvatar = 'https://api.dicebear.com/7.x/bottts/svg?seed=' + Math.floor(Math.random() * 10000);
+    let tempAvatar = currentAvatar;
     avatarPreview.src = currentAvatar;
 
     let currentRoom = '';
@@ -82,34 +109,73 @@
     // Voice Recorder Variables
     let mediaRecorder, audioChunks = [], isRecording = false;
 
-    // 1. Avatar Uploader
-    avatarPreview.onclick = () => avatarInput.click();
+    // 1. Profile Modal Control
+    avatarPicker.onclick = () => {
+      tempAvatar = currentAvatar;
+      profileModalImg.src = currentAvatar;
+      profileUsernameInput.value = usernameInput.value || currentUsername;
+      profileModal.style.display = 'flex';
+    };
+
+    profileModalClose.onclick = () => {
+      profileModal.style.display = 'none';
+    };
+
+    changeAvatarBtn.onclick = () => avatarInput.click();
+
     avatarInput.onchange = (e) => {
       const file = e.target.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = () => {
-          currentAvatar = reader.result;
-          avatarPreview.src = currentAvatar;
+          tempAvatar = reader.result;
+          profileModalImg.src = tempAvatar;
         };
         reader.readAsDataURL(file);
       }
     };
 
-    // 2. Join Room
+    saveProfileBtn.onclick = () => {
+      currentAvatar = tempAvatar;
+      avatarPreview.src = currentAvatar;
+      
+      const newUsername = profileUsernameInput.value.trim();
+      if (newUsername) {
+        currentUsername = newUsername;
+        usernameInput.value = currentUsername;
+      }
+      
+      profileModal.style.display = 'none';
+    };
+
+    // Keep header username field synced with currentUsername variable
+    usernameInput.oninput = () => {
+      currentUsername = usernameInput.value.trim();
+    };
+
+    // 2. Join Room & Emit Online Status
     joinBtn.onclick = () => {
       currentUsername = usernameInput.value.trim() || 'Anonymous';
       currentRoom = roomInput.value.trim();
 
       if (currentRoom) {
-        socket.emit('join_room', currentRoom);
+        socket.emit('join_room', { room: currentRoom, username: currentUsername });
         alert(`Joined Room: ${currentRoom}`);
       } else {
         alert('Please enter a Room ID first.');
       }
     };
 
-    // 3. Send Text Message
+    // 3. Online Status Notification Listener
+    socket.on('user_online', (data) => {
+      const notification = document.createElement('div');
+      notification.className = 'system-notification';
+      notification.innerHTML = `🟢 <strong>${data.username}</strong> is now online (${data.time})`;
+      chatMessages.appendChild(notification);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    });
+
+    // 4. Send Text Message
     sendBtn.onclick = () => {
       const text = messageInput.value.trim();
       if (text && currentRoom) {
@@ -128,12 +194,11 @@
 
     messageInput.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
 
-    // 4. Send Attachment (With Size Check)
+    // 5. Send Attachment (With Size Check)
     fileInput.onchange = (e) => {
       const file = e.target.files[0];
       if (!file || !currentRoom) return;
 
-      // Limit client payload to 50MB to prevent Render RAM overflow
       if (file.size > 50 * 1024 * 1024) {
         alert('File size is too large! Please upload files under 50 MB.');
         fileInput.value = '';
@@ -155,7 +220,7 @@
       fileInput.value = '';
     };
 
-    // 5. Voice Recording & WaveSurfer Waveform Display
+    // 6. Voice Recording & WaveSurfer Waveform Display
     micBtn.onclick = async () => {
       if (!currentRoom) return alert('Please join a room first!');
 
@@ -196,7 +261,7 @@
       }
     };
 
-    // 6. Message Listener
+    // 7. Message Listener
     socket.on('receive_message', (data) => {
       const wrapper = document.createElement('div');
       wrapper.className = 'message-wrapper';
@@ -269,7 +334,7 @@
       chatMessages.scrollTop = chatMessages.scrollHeight;
     });
 
-    // 7. Lightbox Handlers
+    // 8. Lightbox Handlers
     const modal = document.getElementById('image-modal');
     const modalImg = document.getElementById('modal-img');
     document.getElementById('modal-close').onclick = () => modal.style.display = 'none';
