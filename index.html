@@ -128,10 +128,17 @@
 
     messageInput.onkeypress = (e) => { if (e.key === 'Enter') sendBtn.click(); };
 
-    // 4. Send Attachment
+    // 4. Send Attachment (With Size Check)
     fileInput.onchange = (e) => {
       const file = e.target.files[0];
       if (!file || !currentRoom) return;
+
+      // Limit client payload to 50MB to prevent Render RAM overflow
+      if (file.size > 50 * 1024 * 1024) {
+        alert('File size is too large! Please upload files under 50 MB.');
+        fileInput.value = '';
+        return;
+      }
 
       const reader = new FileReader();
       reader.onload = () => {
@@ -209,7 +216,9 @@
         if (data.fileType.startsWith('image/')) {
           msgDiv.innerHTML += `<img src="${data.content}" alt="Attachment">`;
         } else if (data.fileType.startsWith('video/')) {
-          msgDiv.innerHTML += `<video controls src="${data.content}"></video>`;
+          msgDiv.innerHTML += `<video controls playsinline src="${data.content}"></video>`;
+        } else {
+          msgDiv.innerHTML += `<a href="${data.content}" download="file">📥 Download Attachment</a>`;
         }
       } else if (data.type === 'voice') {
         const id = 'wave-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
